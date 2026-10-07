@@ -41,13 +41,29 @@
 
 
     <!-- CHAT -->
-    <main class="chat-main">
-
+    <main class="chat-main chat-start">
         <div class="chat-header">
             <h1>AI Study Assistant</h1>
         </div>
 
 
+        <!-- MESSAGES -->
+        <div class="chat-messages">
+
+            <div class="message user-message">
+
+               
+
+            </div>
+
+
+            <div class="message ai-message">
+
+               
+
+            </div>
+
+        </div>
 
 
         <!-- INPUT -->
@@ -59,7 +75,10 @@
                 class="chat-input"
             >
 
-            <button class="send-button">
+            <button
+                type="button"
+                class="send-button"
+            >
                 ➤
             </button>
 
@@ -68,5 +87,8 @@
     </main>
 
 </div>
+
+
+<script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 
 {% endblock %}
