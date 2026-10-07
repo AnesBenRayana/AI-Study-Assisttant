@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+
+{% block title %}Chat - AI Study Assistant{% endblock %}
+
+{% block content %}
+
+<div class="chat-page">
+
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+
+        <div class="sidebar-header">
+            <h2>AI Study Assistant</h2>
+        </div>
+
+        <nav class="sidebar-nav">
+
+            <a href="#" class="new-chat-button">
+                + Nouveau chat
+            </a>
+
+            <a href="#">
+                Mes cours
+            </a>
+
+            <a href="#">
+                Quiz
+            </a>
+
+        </nav>
+
+        <div class="sidebar-footer">
+
+            <a href="#">
+                Déconnexion
+            </a>
+
+        </div>
+
+    </aside>
+
+
+    <!-- CHAT -->
+    <main class="chat-main">
+
+        <div class="chat-header">
+            <h1>AI Study Assistant</h1>
+        </div>
+
+
+        <!-- MESSAGES -->
+        <div class="chat-messages">
+
+            <div class="message user-message">
+                <div class="message-avatar">👤</div>
+
+                <div class="message-content">
+                    Explique-moi ce concept...
+                </div>
+            </div>
+
+
+            <div class="message ai-message">
+                <div class="message-avatar">🤖</div>
+
+                <div class="message-content">
+                    Bien sûr. Voici une explication simple...
+                </div>
+            </div>
+
+        </div>
+
+
+        <!-- INPUT -->
+        <div class="chat-input-container">
+
+            <input
+                type="text"
+                placeholder="Pose ta question..."
+                class="chat-input"
+            >
+
+            <button class="send-button">
+                ➤
+            </button>
+
+        </div>
+
+    </main>
+
+</div>
+
+{% endblock %}
