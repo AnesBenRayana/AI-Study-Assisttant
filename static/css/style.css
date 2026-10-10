@@ -400,4 +400,66 @@ button {
     .chat-input-container {
         padding: 12px 20px 20px;
     }
+    
+}
+
+.ai-message .message-content {
+    line-height: 1.7;
+    overflow-wrap: anywhere;
+}
+
+.ai-message .message-content h1,
+.ai-message .message-content h2,
+.ai-message .message-content h3 {
+    margin: 18px 0 10px;
+    line-height: 1.4;
+}
+
+.ai-message .message-content p {
+    margin: 10px 0;
+}
+
+.ai-message .message-content ul,
+.ai-message .message-content ol {
+    padding-left: 24px;
+    margin: 10px 0;
+}
+
+.ai-message .message-content li {
+    margin-bottom: 8px;
+}
+
+.ai-message .message-content strong {
+    font-weight: 700;
+}
+
+.ai-message .message-content pre {
+    padding: 12px;
+    border-radius: 8px;
+    overflow-x: auto;
+    background: #1a1a1a;
+}
+
+.ai-message .message-content blockquote {
+    margin: 12px 0;
+    padding-left: 12px;
+    border-left: 3px solid #2f6fed;
+    color: #cccccc;
+}
+
+.chat-input {
+    flex: 1;
+    width: 100%;
+    min-height: 44px;
+    max-height: 200px;
+    height: 44px;
+    resize: none;
+    overflow-y: hidden;
+    box-sizing: border-box;
+    font-family: inherit;
+    font-size: inherit;
+    line-height: 1.5;
+    padding: 12px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
 }

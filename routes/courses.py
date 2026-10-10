@@ -1,4 +1,3 @@
-
 import os
 import uuid
 import tempfile
@@ -7,7 +6,7 @@ import logging
 from flask import Blueprint, request, jsonify
 
 from services.rag_service import index_course_pdf
-
+from services.vector_service import delete_course
 
 courses_bp = Blueprint("courses", __name__)
 
@@ -15,6 +14,7 @@ courses_bp = Blueprint("courses", __name__)
 @courses_bp.route("/api/courses", methods=["POST"])
 def upload_course():
     temp_path = None
+    course_id = str(uuid.uuid4())
 
     try:
         # 1. Vérifier la présence du fichier
@@ -35,10 +35,7 @@ def upload_course():
                 "error": "Seuls les fichiers PDF sont acceptés."
             }), 400
 
-        # 2. Créer un identifiant pour le cours
-        course_id = str(uuid.uuid4())
-
-        # 3. Enregistrer temporairement le PDF
+        # 2. Enregistrer temporairement le PDF
         with tempfile.NamedTemporaryFile(
             suffix=".pdf",
             delete=False,
@@ -46,18 +43,27 @@ def upload_course():
             temp_path = temp_file.name
             file.save(temp_path)
 
-        # 4. Déléguer le traitement au service RAG
+        # 3. Indexer le PDF dans ChromaDB
         count = index_course_pdf(temp_path, course_id)
 
-        # 5. Retourner le résultat au frontend
         return jsonify({
-            "message": "Cours importé et indexé avec succès.",
+            "message": "PDF importé et prêt à être utilisé.",
             "course_id": course_id,
             "chunks_count": count,
         }), 201
 
     except Exception:
-        logging.exception("Erreur lors de l'importation du cours.")
+        # En cas d'échec, supprimer les éventuels chunks partiels
+        try:
+            delete_course(course_id)
+        except Exception:
+            logging.exception(
+                "Erreur lors du nettoyage des données du cours."
+            )
+
+        logging.exception(
+            "Erreur lors de l'importation du cours."
+        )
 
         return jsonify({
             "error": (
@@ -67,6 +73,6 @@ def upload_course():
         }), 500
 
     finally:
-        # 6. Supprimer le PDF temporaire
+        # 4. Supprimer le fichier PDF temporaire
         if temp_path and os.path.exists(temp_path):
             os.remove(temp_path)

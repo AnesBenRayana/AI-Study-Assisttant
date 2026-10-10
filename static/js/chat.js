@@ -3,10 +3,34 @@ const chatInput = document.querySelector(".chat-input");
 const sendButton = document.querySelector(".send-button");
 const chatMessages = document.querySelector(".chat-messages");
 
-// PDF en attente d'envoi
+// =====================================
+// AGRANDIR AUTOMATIQUEMENT LE CHAMP
+// =====================================
+
+const MAX_INPUT_HEIGHT = 200;
+
+function autoResizeInput() {
+    chatInput.style.height = "auto";
+
+    const newHeight = Math.min(
+        chatInput.scrollHeight,
+        MAX_INPUT_HEIGHT
+    );
+
+    chatInput.style.height = `${newHeight}px`;
+    chatInput.style.overflowY =
+        chatInput.scrollHeight > MAX_INPUT_HEIGHT ? "auto" : "hidden";
+}
+
+chatInput.addEventListener("input", autoResizeInput);
+
+// =====================================
+// ÉTAT DE LA SESSION
+// =====================================
+
+let activeCourseId = null;
 let pendingPdf = null;
 let pendingPdfStatusMessage = null;
-
 
 // =====================================
 // AFFICHER UN MESSAGE
@@ -18,26 +42,45 @@ function addMessage(type, text) {
 
     const content = document.createElement("div");
     content.classList.add("message-content");
-    content.textContent = text;
+
+    // Formater les réponses de l'IA en Markdown.
+    // DOMPurify nettoie le HTML généré pour la sécurité.
+    if (
+        type === "ai-message" &&
+        typeof window.marked !== "undefined" &&
+        typeof window.DOMPurify !== "undefined"
+    ) {
+        const html = window.marked.parse(String(text ?? ""));
+        content.innerHTML = window.DOMPurify.sanitize(html);
+    } else {
+        // Les messages utilisateur restent du texte brut.
+        content.textContent = String(text ?? "");
+    }
 
     message.appendChild(content);
     chatMessages.appendChild(message);
 
-    document.querySelector(".chat-main").classList.remove("chat-start");
+    document.querySelector(".chat-main")?.classList.remove("chat-start");
+
     chatMessages.scrollTop = chatMessages.scrollHeight;
 
     return message;
 }
-
 
 // =====================================
 // IMPORTER ET INDEXER UN PDF
 // =====================================
 
 async function uploadPDF(file, statusMessage) {
+    // Un nouveau document remplace le cours actif.
+    const previousCourseId = activeCourseId;
+    activeCourseId = null;
+
     try {
-        statusMessage.querySelector(".message-content").textContent =
-            "⏳ Importation et indexation du PDF en cours...";
+        if (statusMessage?.isConnected) {
+            statusMessage.querySelector(".message-content").textContent =
+                "⏳ Importation et analyse du document en cours...";
+        }
 
         const formData = new FormData();
         formData.append("file", file);
@@ -55,65 +98,98 @@ async function uploadPDF(file, statusMessage) {
             );
         }
 
-        // Enregistrer l'identifiant du cours
-        localStorage.setItem("course_id", data.course_id);
+        // Le nouveau cours devient actif.
+        activeCourseId = data.course_id;
 
-        statusMessage.querySelector(".message-content").textContent =
-            `✅ PDF indexé ! ${data.chunks_count} morceaux enregistrés.`;
+        console.log("Cours indexé :", activeCourseId);
+        console.log("Nombre de chunks :", data.chunks_count);
 
-        return data.course_id;
+        if (statusMessage?.isConnected) {
+            statusMessage.remove();
+        }
+
+        // Supprimer l'ancien cours pour éviter de conserver
+        // ses chunks dans ChromaDB.
+        if (previousCourseId && previousCourseId !== activeCourseId) {
+            try {
+                await fetch("/api/chat/end-session", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        course_id: previousCourseId
+                    })
+                });
+            } catch (cleanupError) {
+                console.error(
+                    "Impossible de supprimer l'ancien cours :",
+                    cleanupError
+                );
+            }
+        }
+
+        return activeCourseId;
 
     } catch (error) {
-        statusMessage.querySelector(".message-content").textContent =
-            `❌ Erreur d'importation : ${error.message}`;
+        // Ne pas réutiliser l'ancien cours si l'importation échoue.
+        activeCourseId = null;
+
+        if (statusMessage?.isConnected) {
+            statusMessage.querySelector(".message-content").textContent =
+                `❌ Échec de l'importation : ${error.message}`;
+        }
 
         throw error;
     }
 }
 
-
 // =====================================
-// ENVOYER LA QUESTION AU CHATBOT
+// ENVOYER UNE DEMANDE AU CHATBOT
 // =====================================
 
 async function sendMessage() {
     const messageText = chatInput.value.trim();
 
-    // Ne rien envoyer si aucune question n'est écrite
     if (!messageText) {
         chatInput.focus();
         return;
     }
 
-    // Afficher la question de l'utilisateur
     addMessage("user-message", messageText);
-    chatInput.value = "";
 
-    // Désactiver temporairement l'envoi
+    chatInput.value = "";
+    autoResizeInput();
     sendButton.disabled = true;
 
+    let uploadStatusMessage = null;
+
     try {
-        // Si un PDF est en attente, l'indexer d'abord
+        // 1. Importer le PDF en attente, s'il existe.
         if (pendingPdf) {
             const fileToUpload = pendingPdf;
-            const statusMessage = pendingPdfStatusMessage;
+            uploadStatusMessage = pendingPdfStatusMessage;
 
-            const courseId = await uploadPDF(
-                fileToUpload,
-                statusMessage
-            );
-
-            // Effacer le PDF en attente après indexation réussie
+            // Éviter de réimporter le même fichier.
             pendingPdf = null;
             pendingPdfStatusMessage = null;
 
-            console.log("Cours indexé :", courseId);
+            await uploadPDF(fileToUpload, uploadStatusMessage);
         }
 
-        // Récupérer l'identifiant du cours
-        const courseId = localStorage.getItem("course_id");
+        // 2. Exiger un PDF avant toute question.
+        if (!activeCourseId) {
+            addMessage(
+                "ai-message",
+                "📄 **Aucun document n'a été importé.**\n\n" +
+                "Veuillez importer un fichier PDF pour commencer. " +
+                "Je pourrai ensuite expliquer le cours, répondre à vos questions " +
+                "et générer des quiz ou des exercices à partir de son contenu."
+            );
+            return;
+        }
 
-        // Envoyer la question à Flask
+        // 3. Envoyer la question et l'identifiant du cours.
         const response = await fetch("/api/chat", {
             method: "POST",
             headers: {
@@ -121,93 +197,161 @@ async function sendMessage() {
             },
             body: JSON.stringify({
                 message: messageText,
-                course_id: courseId
+                course_id: activeCourseId
             })
         });
 
         const data = await response.json();
 
         if (!response.ok) {
-            throw new Error(data.error || "Erreur du serveur");
+            throw new Error(
+                data.error || "Une erreur est survenue."
+            );
         }
 
-        // Afficher la réponse du chatbot
+        // 4. Afficher la réponse avec le formatage Markdown.
         addMessage("ai-message", data.response);
 
     } catch (error) {
-        console.error("Erreur :", error);
+        console.error("Erreur du chatbot :", error);
 
-        addMessage(
-            "ai-message",
-            `Erreur : ${error.message}`
-        );
+        // uploadPDF affiche déjà l'erreur dans son message de statut.
+        if (!uploadStatusMessage?.isConnected) {
+            addMessage(
+                "ai-message",
+                `❌ ${error.message}`
+            );
+        }
+
     } finally {
         sendButton.disabled = false;
         chatInput.focus();
     }
 }
 
-
 // =====================================
 // DÉTECTER UN PDF COLLÉ AVEC CTRL + V
 // =====================================
 
-chatInput.addEventListener("paste", function(event) {
+chatInput.addEventListener("paste", function (event) {
     const clipboard = event.clipboardData;
 
-    if (!clipboard) return;
+    if (!clipboard) {
+        return;
+    }
 
     let pdfFile = null;
+    let containsFile = false;
 
     for (const item of clipboard.items) {
-        if (item.kind !== "file") continue;
+        if (item.kind !== "file") {
+            continue;
+        }
+
+        containsFile = true;
 
         const file = item.getAsFile();
 
+        if (!file) {
+            continue;
+        }
+
         if (
-            file &&
-            (
-                file.type === "application/pdf" ||
-                file.name.toLowerCase().endsWith(".pdf")
-            )
+            file.type === "application/pdf" ||
+            file.name.toLowerCase().endsWith(".pdf")
         ) {
             pdfFile = file;
             break;
         }
     }
 
-    // Si aucun PDF n'est détecté, le collage normal continue
-    if (!pdfFile) return;
+    // Ne pas interrompre le collage de texte ordinaire.
+    if (!containsFile) {
+        return;
+    }
 
     event.preventDefault();
 
-    // Conserver le PDF sans lancer immédiatement l'importation
+    if (!pdfFile) {
+        addMessage(
+            "ai-message",
+            "❌ **Fichier non accepté.**\n\n" +
+            "Veuillez importer un document au format PDF."
+        );
+        return;
+    }
+
     pendingPdf = pdfFile;
 
-    // Afficher un message d'attente
-    if (pendingPdfStatusMessage) {
+    const statusText =
+        `📄 Document prêt : ${pdfFile.name}. ` +
+        "Envoyez votre demande pour commencer.";
+
+    if (pendingPdfStatusMessage?.isConnected) {
         pendingPdfStatusMessage.querySelector(".message-content").textContent =
-            `📄 PDF remplacé : ${pdfFile.name}. Écris ta question puis envoie.`;
+            statusText;
     } else {
         pendingPdfStatusMessage = addMessage(
             "ai-message",
-            `📄 PDF prêt : ${pdfFile.name}. Écris ta question puis clique sur Envoyer.`
+            statusText
         );
     }
 
     chatInput.focus();
 });
 
-
 // =====================================
-// ÉVÉNEMENTS DU CHAT
+// ENVOYER AVEC LE BOUTON
 // =====================================
 
 sendButton.addEventListener("click", sendMessage);
 
-chatInput.addEventListener("keydown", function(event) {
+// =====================================
+// ENTRÉE = ENVOYER
+// SHIFT + ENTRÉE = NOUVELLE LIGNE
+// =====================================
+
+
+chatInput.addEventListener("keydown", function (event) {
+    // Entrée : envoyer le message
     if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
         sendMessage();
     }
+
+    // Shift + Entrée : laisser le navigateur
+    // insérer une nouvelle ligne normalement.
+});
+
+// =====================================
+// TERMINER LA SESSION À LA FERMETURE
+// OU AU RECHARGEMENT DE LA PAGE
+// =====================================
+
+window.addEventListener("pagehide", function () {
+    if (!activeCourseId) {
+        return;
+    }
+
+    const courseIdToDelete = activeCourseId;
+    activeCourseId = null;
+
+    // Demander au serveur de supprimer les chunks du cours.
+    // keepalive permet à la requête de continuer pendant
+    // la fermeture ou le rechargement de la page.
+    fetch("/api/chat/end-session", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+            course_id: courseIdToDelete
+        }),
+        keepalive: true
+    }).catch((error) => {
+        console.error(
+            "Impossible de demander le nettoyage de la session :",
+            error
+        );
+    });
 });

@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 
 {% block title %}Chat - AI Study Assistant{% endblock %}
@@ -39,56 +40,47 @@
 
     </aside>
 
-
     <!-- CHAT -->
     <main class="chat-main chat-start">
+
         <div class="chat-header">
             <h1>AI Study Assistant</h1>
         </div>
 
-
         <!-- MESSAGES -->
         <div class="chat-messages">
 
-            <div class="message user-message">
-
-               
-
-            </div>
-
-
-            <div class="message ai-message">
-
-               
-
-            </div>
+            <!-- Les messages sont ajoutés dynamiquement par chat.js -->
 
         </div>
 
+        
+<!-- INPUT -->
+<div class="chat-input-container">
 
-        <!-- INPUT -->
-        <div class="chat-input-container">
+    <textarea
+        placeholder="Pose ta question..."
+        class="chat-input"
+        rows="1"
+        autocomplete="off"
+    ></textarea>
 
-            <input
-                type="text"
-                placeholder="Pose ta question..."
-                class="chat-input"
-            >
-
-            <button
-                type="button"
-                class="send-button"
-            >
-                ➤
-            </button>
-
-        </div>
-
-    </main>
+    <button
+        type="button"
+        class="send-button"
+        aria-label="Envoyer le message"
+    >
+        ➤
+    </button>
 
 </div>
+<!-- Bibliothèque Markdown -->
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 
+<!-- Nettoyage du HTML pour la sécurité -->
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
 
+<!-- JavaScript du chatbot : toujours après les deux bibliothèques -->
 <script src="{{ url_for('static', filename='js/chat.js') }}"></script>
 
 {% endblock %}

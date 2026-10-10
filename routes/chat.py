@@ -3,6 +3,7 @@ import logging
 
 from services.llm_service import generate_response
 from services.rag_service import retrieve_course_context
+from services.vector_service import delete_course
 
 
 chat_bp = Blueprint("chat", __name__)
@@ -13,78 +14,97 @@ def chat():
     return render_template("chat/index.html")
 
 
+# =====================================
+# API CHAT
+# =====================================
+
 @chat_bp.route("/api/chat", methods=["POST"])
 def api_chat():
     try:
-        # =====================================
-        # 1. RECEVOIR LA REQUÊTE
-        # =====================================
         data = request.get_json(silent=True) or {}
 
         message = data.get("message", "").strip()
         course_id = data.get("course_id")
 
-        print("\n" + "=" * 60, flush=True)
-        print("🔥 API CHAT APPELÉE", flush=True)
-        print(f"❓ Question : {message}", flush=True)
-        print(f"📚 Course ID reçu : {course_id}", flush=True)
-        print("=" * 60, flush=True)
-
+        # 1. Vérifier le message
         if not message:
             return jsonify({
-                "error": "Message vide"
+                "error": "Veuillez saisir une demande."
             }), 400
 
-        # =====================================
-        # 2. RÉCUPÉRER LE CONTEXTE DU COURS
-        # =====================================
-        context = ""
+        # 2. Exiger un PDF
+        if not course_id:
+            return jsonify({
+                "error": (
+                    "📄 Aucun document n'a été importé. "
+                    "Veuillez importer un PDF pour commencer."
+                )
+            }), 400
 
-        if course_id:
-            print("\n🔎 Début de la recherche RAG...", flush=True)
+        # 3. Récupérer le contexte du cours
+        context = retrieve_course_context(
+            question=message,
+            course_id=course_id
+        )
 
-            context = retrieve_course_context(
-                question=message,
-                course_id=course_id
-            )
+        # 4. Ne pas répondre sans contenu exploitable
+        if not context or not context.strip():
+            return jsonify({
+                "error": (
+                    "Aucun contenu exploitable n'a été trouvé "
+                    "pour ce cours. Veuillez importer un PDF valide."
+                )
+            }), 400
 
-            print("\n" + "-" * 60, flush=True)
-            print("📦 CONTEXTE RÉCUPÉRÉ DEPUIS CHROMADB", flush=True)
-            print(f"📏 Longueur : {len(context)} caractères", flush=True)
-            print("-" * 60, flush=True)
-            print(context, flush=True)
-            print("-" * 60, flush=True)
-            print("✅ Recherche RAG terminée", flush=True)
-
-        else:
-            print(
-                "⚠️ Aucun course_id reçu : le RAG n'est pas exécuté.",
-                flush=True
-            )
-
-        # =====================================
-        # 3. GÉNÉRER LA RÉPONSE AVEC GROQ
-        # =====================================
-        print("\n🤖 Envoi de la question à Groq...", flush=True)
-
+        # 5. Générer la réponse avec Groq
         response = generate_response(
             message=message,
             context=context
         )
 
-        print("✅ Réponse de Groq reçue", flush=True)
-        print("=" * 60 + "\n", flush=True)
-
-        # =====================================
-        # 4. RETOURNER LA RÉPONSE AU FRONTEND
-        # =====================================
         return jsonify({
             "response": response
-        })
+        }), 200
 
     except Exception:
-        logging.exception("❌ Erreur API CHAT")
+        logging.exception("Erreur API CHAT")
 
         return jsonify({
-            "error": "Une erreur est survenue pendant le traitement de votre question."
+            "error": (
+                "Une erreur est survenue pendant le traitement "
+                "de votre demande."
+            )
+        }), 500
+
+
+# =====================================
+# TERMINER LA SESSION ET SUPPRIMER LE COURS
+# =====================================
+
+@chat_bp.route("/api/chat/end-session", methods=["POST"])
+def end_chat_session():
+    try:
+        data = request.get_json(silent=True) or request.form
+
+        course_id = data.get("course_id")
+
+        if course_id:
+            delete_course(course_id)
+
+            logging.info(
+                "Données ChromaDB supprimées pour le cours %s",
+                course_id
+            )
+
+        return jsonify({
+            "message": "Session terminée."
+        }), 200
+
+    except Exception:
+        logging.exception(
+            "Erreur lors de la suppression des données du cours."
+        )
+
+        return jsonify({
+            "error": "Impossible de nettoyer les données de la session."
         }), 500

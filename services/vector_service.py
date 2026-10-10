@@ -1,6 +1,5 @@
 import chromadb
 
-
 client = chromadb.PersistentClient(path="./chroma_data")
 
 collection = client.get_or_create_collection(
@@ -18,10 +17,7 @@ def store_chunks(chunks, embeddings, course_id):
     if not chunks:
         raise ValueError("Aucun morceau à enregistrer.")
 
-    ids = [
-        f"{course_id}_{i}"
-        for i in range(len(chunks))
-    ]
+    ids = [f"{course_id}_{i}" for i in range(len(chunks))]
 
     collection.upsert(
         ids=ids,
@@ -44,3 +40,10 @@ def search_chunks(query_embedding, course_id, n_results=4):
     )
 
     return results["documents"][0]
+
+
+def delete_course(course_id):
+    """Supprime tous les morceaux associés à un cours."""
+    collection.delete(
+        where={"course_id": course_id}
+    )
